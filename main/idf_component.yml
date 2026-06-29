@@ -1,0 +1,8 @@
+## IDF Component Manager Manifest File
+dependencies:
+  idf:
+    version: '>=5.4.0'
+  espressif/esp32_p4_function_ev_board: ^5.2.3
+  espressif/esp_hosted: ^2.12.6
+  espressif/esp_wifi_remote: ^1.5.1
+  espressif/esp-sr: ^2.4.3
