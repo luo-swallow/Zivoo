@@ -207,8 +207,34 @@ std::string ImageManager::save_capture_frame(who::cam::cam_fb_t *fb)
     }
 
     int64_t t_jpeg_start = esp_timer_get_time();
-    dl::image::jpeg_img_t jpeg_img = dl::image::sw_encode_jpeg(img, 85);
+    dl::image::jpeg_img_t jpeg_img = {nullptr, 0};
+
+    if (!jpeg_img.data) {
+        // ov5647的RGB565软件编码亮度异常，手动扩展为RGB888再编码
+        if (img.pix_type == dl::image::DL_IMAGE_PIX_TYPE_RGB565LE) {
+            size_t px = (size_t)img.width * img.height;
+            uint8_t *rgb888 = (uint8_t *)heap_caps_malloc(px * 3, MALLOC_CAP_SPIRAM);
+            if (rgb888) {
+                uint8_t *s = (uint8_t *)img.data;
+                for (size_t i = 0; i < px; i++) {
+                    uint16_t p = s[0] | ((uint16_t)s[1] << 8);
+                    uint8_t r5 = (p >> 11) & 0x1f, g6 = (p >> 5) & 0x3f, b5 = p & 0x1f;
+                    rgb888[i * 3]     = (r5 << 3) | (r5 >> 2);  // 5→8 bit
+                    rgb888[i * 3 + 1] = (g6 << 2) | (g6 >> 4);  // 6→8 bit
+                    rgb888[i * 3 + 2] = (b5 << 3) | (b5 >> 2);  // 5→8 bit
+                    s += 2;
+                }
+                dl::image::img_t img_rgb(rgb888, img.width, img.height, dl::image::DL_IMAGE_PIX_TYPE_RGB888);
+                jpeg_img = dl::image::sw_encode_jpeg(img_rgb, 85);
+                heap_caps_free(rgb888);
+            }
+        }
+        if (!jpeg_img.data) {
+            jpeg_img = dl::image::sw_encode_jpeg(img, 85);
+        }
+    }
     int64_t t_jpeg_end = esp_timer_get_time();
+
     if (!jpeg_img.data) {
         ESP_LOGE(TAG, "Failed to encode JPEG");
         return "";

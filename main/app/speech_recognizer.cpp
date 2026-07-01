@@ -301,7 +301,8 @@ void SpeechRecognizer::detect_task(void* arg)
     esp_mn_commands_update();
 
     bool is_woken = false;
-    int64_t t_detect_start = esp_timer_get_time();
+    int64_t t_wake_start = 0;
+    const int64_t COMMAND_TIMEOUT_US = 8 * 1000 * 1000; // 8秒超时
 
     while (self->m_task_flag) {
         afe_fetch_result_t *res = afe_handle->fetch(afe_data);
@@ -315,9 +316,17 @@ void SpeechRecognizer::detect_task(void* arg)
             ESP_LOGI(TAG, "[PERF] 语音唤醒词检测成功");
             who::sys::tts_speak("我在");
             is_woken = true;
+            t_wake_start = esp_timer_get_time();
         }
 
         if (!is_woken) {
+            continue;
+        }
+
+        // 8秒无命令则自动休眠
+        if (esp_timer_get_time() - t_wake_start > COMMAND_TIMEOUT_US) {
+            ESP_LOGI(TAG, "语音命令超时，自动休眠");
+            is_woken = false;
             continue;
         }
 
@@ -337,9 +346,9 @@ void SpeechRecognizer::detect_task(void* arg)
             // 执行命令
             self->execute_command((VoiceCommand)cmd_id, sr_time_ms);
 
-            // 保持唤醒状态，可连续执行命令
+            // 重置超时，继续等待下一条命令
+            t_wake_start = esp_timer_get_time();
         }
-        // 不处理超时，唤醒后一直保持唤醒状态
     }
 
     multinet->destroy(model_data);
